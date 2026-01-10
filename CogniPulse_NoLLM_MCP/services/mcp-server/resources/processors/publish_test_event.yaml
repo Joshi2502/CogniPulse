@@ -1,0 +1,39 @@
+label: publish_test_event
+meta:
+  mcp:
+    enabled: true
+    description: "Publish a test telemetry event into CogniPulse (to cogni.events)."
+    properties:
+      - name: device_id
+        type: string
+        description: "Device identifier. Default factory-01."
+        required: false
+      - name: temperature
+        type: number
+        description: "Temperature reading. Default 65."
+        required: false
+      - name: vibration
+        type: number
+        description: "Vibration reading. Default 3.5."
+        required: false
+processors:
+  - label: defaults
+    mutation: |
+      meta device_id = this.device_id.or("factory-01").string()
+      meta temperature = (this.temperature.or(65)).number()
+      meta vibration = (this.vibration.or(3.5)).number()
+      root = {
+        "device_id": @device_id,
+        "temperature": @temperature,
+        "vibration": @vibration
+      }
+  - label: call_publish_endpoint
+    http:
+      url: "http://rule-engine:8000/publish_test_event"
+      verb: POST
+      headers:
+        Content-Type: "application/json"
+      timeout: "10s"
+  - label: normalize
+    mutation: |
+      root = this
