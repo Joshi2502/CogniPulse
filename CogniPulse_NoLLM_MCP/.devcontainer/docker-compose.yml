@@ -1,8 +1,0 @@
-version: '3.9'
-
-services:
-  dev:
-    image: mcr.microsoft.com/devcontainers/cpp:1-debian-12
-    volumes:
-      - ..:/workspaces/${localWorkspaceFolderBasename}:cached
-    command: sleep infinity
