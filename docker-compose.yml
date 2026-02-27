@@ -1,0 +1,84 @@
+services:
+
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v23.1.2
+    container_name: redpanda
+    command:
+      - redpanda
+      - start
+      - --mode
+      - dev-container
+      - --smp
+      - "1"
+      - --memory
+      - "512M"
+      - --reserve-memory
+      - "0M"
+      - --node-id
+      - "0"
+      - --check=false
+      - --kafka-addr
+      - PLAINTEXT://0.0.0.0:9092
+      - --advertise-kafka-addr
+      - PLAINTEXT://redpanda:9092
+    ports:
+      - "9092:9092"
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    environment:
+      POSTGRES_USER: cogni
+      POSTGRES_PASSWORD: cogni
+      POSTGRES_DB: cogni
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    restart: unless-stopped
+
+  simulator:
+    build: ./simulator
+    depends_on:
+      - redpanda
+    restart: on-failure
+
+  analyzer:
+    build: ./analyzer
+    depends_on:
+      - redpanda
+    restart: on-failure
+
+  persistence:
+    build: ./persistence
+    depends_on:
+      - postgres
+      - redpanda
+    restart: on-failure
+
+  agent:
+    build: ./agent
+    depends_on:
+      - postgres
+      - redpanda
+      - ollama
+    restart: on-failure
+
+  mcp:
+    build: ./mcp_server
+    depends_on:
+      - postgres
+    ports:
+      - "8000:8000"
+    restart: on-failure
+
+volumes:
+  pgdata:
