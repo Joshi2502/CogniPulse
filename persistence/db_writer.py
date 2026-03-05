@@ -1,13 +1,22 @@
 import json
+import time
 import psycopg2
 from kafka import KafkaConsumer
 
-conn = psycopg2.connect(
-    host="postgres",
-    dbname="cogni",
-    user="cogni",
-    password="cogni"
-)
+# Retry Postgres connection
+while True:
+    try:
+        conn = psycopg2.connect(
+            host="postgres",
+            dbname="cogni",
+            user="cogni",
+            password="cogni"
+        )
+        print("✅ Persistence connected to Postgres.")
+        break
+    except Exception as e:
+        print(f"⏳ Waiting for Postgres... ({e})")
+        time.sleep(3)
 
 cursor = conn.cursor()
 
@@ -15,15 +24,23 @@ with open("schema.sql", "r") as f:
     cursor.execute(f.read())
     conn.commit()
 
-consumer = KafkaConsumer(
-    "cogni.events",
-    "cogni.alerts",
-    "cogni.actions",
-    bootstrap_servers="redpanda:9092",
-    value_deserializer=lambda m: json.loads(m.decode("utf-8")),
-    auto_offset_reset="earliest",
-    group_id="persistence-group"
-)
+# Retry Redpanda connection
+while True:
+    try:
+        consumer = KafkaConsumer(
+            "cogni.events",
+            "cogni.alerts",
+            "cogni.actions",
+            bootstrap_servers="redpanda:9092",
+            value_deserializer=lambda m: json.loads(m.decode("utf-8")),
+            auto_offset_reset="earliest",
+            group_id="persistence-group"
+        )
+        print("✅ Persistence connected to Redpanda.")
+        break
+    except Exception as e:
+        print(f"⏳ Waiting for Redpanda... ({e})")
+        time.sleep(3)
 
 for message in consumer:
     topic = message.topic

@@ -8,33 +8,43 @@ from policy import validate_action
 print("🤖 Agent starting...")
 
 # -----------------------------
-# Kafka Consumer (alerts)
+# Kafka Consumer (alerts) — retry until Redpanda is ready
 # -----------------------------
-consumer = KafkaConsumer(
-    "cogni.alerts",
-    bootstrap_servers="redpanda:9092",
-    value_deserializer=lambda m: json.loads(m.decode("utf-8")),
-    group_id="agent-group",
-    auto_offset_reset="latest",
-)
+while True:
+    try:
+        consumer = KafkaConsumer(
+            "cogni.alerts",
+            bootstrap_servers="redpanda:9092",
+            value_deserializer=lambda m: json.loads(m.decode("utf-8")),
+            group_id="agent-group",
+            auto_offset_reset="latest",
+        )
+        producer = KafkaProducer(
+            bootstrap_servers="redpanda:9092",
+            value_serializer=lambda v: json.dumps(v).encode("utf-8")
+        )
+        print("✅ Connected to Redpanda.")
+        break
+    except Exception as e:
+        print(f"⏳ Waiting for Redpanda... ({e})")
+        time.sleep(3)
 
 # -----------------------------
-# Kafka Producer (actions)
+# Database Connection — retry until Postgres is ready
 # -----------------------------
-producer = KafkaProducer(
-    bootstrap_servers="redpanda:9092",
-    value_serializer=lambda v: json.dumps(v).encode("utf-8")
-)
-
-# -----------------------------
-# Database Connection
-# -----------------------------
-conn = psycopg2.connect(
-    host="postgres",
-    dbname="cogni",
-    user="cogni",
-    password="cogni"
-)
+while True:
+    try:
+        conn = psycopg2.connect(
+            host="postgres",
+            dbname="cogni",
+            user="cogni",
+            password="cogni"
+        )
+        print("✅ Agent connected to Postgres.")
+        break
+    except Exception as e:
+        print(f"⏳ Waiting for Postgres... ({e})")
+        time.sleep(3)
 
 print("✅ Agent connected to Kafka and Postgres.")
 print("👂 Waiting for alerts...\n")
@@ -93,51 +103,49 @@ while True:
             )
 
             result = cursor.fetchone()
-            latest_temp = result[0] if result else 0
+            latest_temp = result[0] if result else alert.get("temperature", 80.0)
 
             print("\n📊 Latest Temperature:")
             print(latest_temp)
 
             # -----------------------------
-            # Minimal Prompt (fast + stable)
+            # Deterministic action + confidence based on thresholds
             # -----------------------------
-            prompt = f"""
-Temperature: {latest_temp}
-Severity: {alert['severity']}
+            severity = alert["severity"]
 
-Return JSON:
-{{
-  "action_type": "SHUTDOWN | COOLING | LOG_ONLY",
-  "confidence": 0.0,
-  "reasoning": ""
-}}
-"""
+            if latest_temp > 100 or severity == "CRITICAL":
+                action_type = "SHUTDOWN"
+                confidence = round(min(0.7 + (latest_temp - 100) / 100, 1.0), 2) if latest_temp > 100 else 0.95
+            elif latest_temp > 90:
+                action_type = "COOLING"
+                confidence = round(0.6 + (latest_temp - 90) / 100, 2)
+            elif latest_temp > 75:
+                action_type = "NOTIFY"
+                confidence = round(0.5 + (latest_temp - 75) / 100, 2)
+            else:
+                action_type = "LOG_ONLY"
+                confidence = round(0.5 + (latest_temp - 66) / 100, 2)
 
-            print("\n🧠 Sending to LLM...")
+            print("\n🧠 Sending to LLM for reasoning...")
 
             # -----------------------------
-            # Call LLM
+            # LLM only generates the reasoning text
             # -----------------------------
+            prompt = f"""A machine sensor reported: temperature {latest_temp}°C, severity {severity}.
+The system has decided to take action: {action_type}.
+In one sentence, explain why {action_type} is the appropriate response."""
+
             try:
-                llm_response = ask_llm(prompt)
-
-                print("\n🔎 RAW LLM TEXT:")
-                print(llm_response)
-
-                cleaned_json = extract_json(llm_response)
-
-                print("\n🤖 Extracted JSON:")
-                print(cleaned_json)
-
-                decision = json.loads(cleaned_json)
-
+                reasoning = ask_llm(prompt).strip().split("\n")[0]
             except Exception as e:
-                print("\n❌ LLM Processing Error:", e)
-                decision = {
-                    "action_type": "LOG_ONLY",
-                    "confidence": 0.0,
-                    "reasoning": "LLM failure"
-                }
+                print("\n❌ LLM Error:", e)
+                reasoning = f"Temperature {latest_temp}°C with {severity} severity requires {action_type}."
+
+            decision = {
+                "action_type": action_type,
+                "confidence": confidence,
+                "reasoning": reasoning
+            }
 
             # -----------------------------
             # Validate via policy
