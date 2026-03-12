@@ -63,15 +63,31 @@ for message in consumer:
         ))
 
     elif topic == "cogni.alerts":
+        # Link to the most recent telemetry event for this device
         cursor.execute(
-            "INSERT INTO alert_events (device_id, timestamp, alert_type, severity, reason) VALUES (%s,%s,%s,%s,%s)",
-            (data["device_id"], data["timestamp"], data["alert_type"], data["severity"], data["reason"])
+            "SELECT id FROM telemetry_events WHERE device_id=%s AND timestamp <= %s ORDER BY timestamp DESC LIMIT 1",
+            (data["device_id"], data["timestamp"])
+        )
+        row = cursor.fetchone()
+        telemetry_event_id = row[0] if row else None
+
+        cursor.execute(
+            "INSERT INTO alert_events (device_id, timestamp, alert_type, severity, reason, telemetry_event_id) VALUES (%s,%s,%s,%s,%s,%s)",
+            (data["device_id"], data["timestamp"], data["alert_type"], data["severity"], data["reason"], telemetry_event_id)
         )
 
     elif topic == "cogni.actions":
+        # Link to the most recent alert for this device
         cursor.execute(
-            "INSERT INTO action_events (device_id, timestamp, action_type, decision_reason, confidence) VALUES (%s,%s,%s,%s,%s)",
-            (data["device_id"], data["timestamp"], data["action_type"], data["decision_reason"], data["confidence"])
+            "SELECT id FROM alert_events WHERE device_id=%s AND timestamp <= %s ORDER BY timestamp DESC LIMIT 1",
+            (data["device_id"], data["timestamp"])
+        )
+        row = cursor.fetchone()
+        alert_event_id = row[0] if row else None
+
+        cursor.execute(
+            "INSERT INTO action_events (device_id, timestamp, action_type, decision_reason, confidence, alert_event_id) VALUES (%s,%s,%s,%s,%s,%s)",
+            (data["device_id"], data["timestamp"], data["action_type"], data["decision_reason"], data["confidence"], alert_event_id)
         )
 
         status = "CRITICAL" if data["action_type"] == "SHUTDOWN" else "WARNING"

@@ -12,7 +12,8 @@ CREATE TABLE IF NOT EXISTS alert_events (
     timestamp BIGINT NOT NULL,
     alert_type TEXT,
     severity TEXT,
-    reason TEXT
+    reason TEXT,
+    telemetry_event_id INT REFERENCES telemetry_events(id)
 );
 
 CREATE TABLE IF NOT EXISTS action_events (
@@ -21,7 +22,8 @@ CREATE TABLE IF NOT EXISTS action_events (
     timestamp BIGINT NOT NULL,
     action_type TEXT,
     decision_reason TEXT,
-    confidence DOUBLE PRECISION
+    confidence DOUBLE PRECISION,
+    alert_event_id INT REFERENCES alert_events(id)
 );
 
 CREATE TABLE IF NOT EXISTS latest_state (
