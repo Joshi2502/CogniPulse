@@ -72,16 +72,40 @@ int main() {
 
             try {
                 json event = json::parse(payload);
-                double temp = event["temperature"];
+                std::string metric_name = event["metric_name"];
+                double metric_value     = event["metric_value"];
+                std::string device_id   = event["device_id"];
+                long long timestamp     = event["timestamp"];
 
-                if (temp > 66) {
+                std::string alert_type, severity, reason;
+                bool should_alert = false;
 
+                if (metric_name == "temperature" && metric_value > 66) {
+                    alert_type    = "OVERHEAT";
+                    severity      = metric_value > 100 ? "CRITICAL" : "WARNING";
+                    reason        = "Temperature exceeded threshold";
+                    should_alert  = true;
+                } else if (metric_name == "vibration" && metric_value > 0.08) {
+                    alert_type    = "HIGH_VIBRATION";
+                    severity      = metric_value > 0.15 ? "CRITICAL" : "WARNING";
+                    reason        = "Vibration exceeded safe limit";
+                    should_alert  = true;
+                } else if (metric_name == "pressure" && metric_value < 2.5) {
+                    alert_type    = "LOW_PRESSURE";
+                    severity      = metric_value < 1.5 ? "CRITICAL" : "WARNING";
+                    reason        = "Pressure dropped below safe threshold";
+                    should_alert  = true;
+                }
+
+                if (should_alert) {
                     json alert = {
-                        {"device_id", event["device_id"]},
-                        {"timestamp", event["timestamp"]},
-                        {"alert_type", "OVERHEAT"},
-                        {"severity", temp > 100 ? "CRITICAL" : "WARNING"},
-                        {"reason", "Temperature exceeded threshold"}
+                        {"device_id",  device_id},
+                        {"timestamp",  timestamp},
+                        {"alert_type", alert_type},
+                        {"severity",   severity},
+                        {"reason",     reason},
+                        {"metric_name",  metric_name},
+                        {"metric_value", metric_value}
                     };
 
                     std::string alert_payload = alert.dump();

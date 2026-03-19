@@ -90,20 +90,7 @@ while True:
             # -----------------------------
             # Fetch latest temperature ONLY
             # -----------------------------
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                SELECT temperature
-                FROM telemetry_events
-                WHERE device_id=%s
-                ORDER BY timestamp DESC
-                LIMIT 1
-                """,
-                (alert["device_id"],)
-            )
-
-            result = cursor.fetchone()
-            latest_temp = result[0] if result else alert.get("temperature", 80.0)
+            latest_temp = alert.get("metric_value", 80.0)
 
             print("\n📊 Latest Temperature:")
             print(latest_temp)

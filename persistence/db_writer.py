@@ -21,7 +21,10 @@ while True:
 cursor = conn.cursor()
 
 with open("schema.sql", "r") as f:
-    cursor.execute(f.read())
+    for statement in f.read().split(";"):
+        statement = statement.strip()
+        if statement:
+            cursor.execute(statement)
     conn.commit()
 
 # Retry Redpanda connection
@@ -47,51 +50,63 @@ for message in consumer:
     data = message.value
 
     if topic == "cogni.events":
+        # Each message is already one metric row
         cursor.execute(
-            "INSERT INTO telemetry_events (device_id, timestamp, temperature, vibration) VALUES (%s,%s,%s,%s)",
-            (data["device_id"], data["timestamp"], data["temperature"], data["vibration"])
+            "INSERT INTO event (device_id, metric_name, metric_value, event_timestamp) VALUES (%s,%s,%s,%s)",
+            (data["device_id"], data["metric_name"], data["metric_value"], data["timestamp"])
         )
 
-        cursor.execute("""
-            INSERT INTO latest_state (device_id, last_seen, last_temperature, last_vibration, status)
-            VALUES (%s,%s,%s,%s,'NORMAL')
-            ON CONFLICT (device_id)
-            DO UPDATE SET last_seen=%s, last_temperature=%s, last_vibration=%s
-        """, (
-            data["device_id"], data["timestamp"], data["temperature"], data["vibration"],
-            data["timestamp"], data["temperature"], data["vibration"]
-        ))
+        # Update latest_state when we receive temperature or vibration
+        if data["metric_name"] == "temperature":
+            cursor.execute("""
+                INSERT INTO latest_state (device_id, last_seen, last_temperature, last_vibration, status)
+                VALUES (%s,%s,%s,0,'NORMAL')
+                ON CONFLICT (device_id)
+                DO UPDATE SET last_seen=%s, last_temperature=%s
+            """, (
+                data["device_id"], data["timestamp"], data["metric_value"],
+                data["timestamp"], data["metric_value"]
+            ))
+        elif data["metric_name"] == "vibration":
+            cursor.execute("""
+                INSERT INTO latest_state (device_id, last_seen, last_temperature, last_vibration, status)
+                VALUES (%s,%s,0,%s,'NORMAL')
+                ON CONFLICT (device_id)
+                DO UPDATE SET last_seen=%s, last_vibration=%s
+            """, (
+                data["device_id"], data["timestamp"], data["metric_value"],
+                data["timestamp"], data["metric_value"]
+            ))
 
     elif topic == "cogni.alerts":
-        # Link to the most recent telemetry event for this device
+        # Link to the most recent temperature event for this device
         cursor.execute(
-            "SELECT id FROM telemetry_events WHERE device_id=%s AND timestamp <= %s ORDER BY timestamp DESC LIMIT 1",
+            "SELECT event_id FROM event WHERE device_id=%s AND metric_name='temperature' AND event_timestamp <= %s ORDER BY event_timestamp DESC LIMIT 1",
             (data["device_id"], data["timestamp"])
         )
         row = cursor.fetchone()
-        telemetry_event_id = row[0] if row else None
+        event_id = row[0] if row else None
 
         cursor.execute(
-            "INSERT INTO alert_events (device_id, timestamp, alert_type, severity, reason, telemetry_event_id) VALUES (%s,%s,%s,%s,%s,%s)",
-            (data["device_id"], data["timestamp"], data["alert_type"], data["severity"], data["reason"], telemetry_event_id)
+            "INSERT INTO alert (event_id, severity, alert_timestamp) VALUES (%s,%s,%s)",
+            (event_id, data["severity"], data["timestamp"])
         )
 
     elif topic == "cogni.actions":
         # Link to the most recent alert for this device
         cursor.execute(
-            "SELECT id FROM alert_events WHERE device_id=%s AND timestamp <= %s ORDER BY timestamp DESC LIMIT 1",
+            "SELECT alert_id FROM alert WHERE event_id IN (SELECT event_id FROM event WHERE device_id=%s) AND alert_timestamp <= %s ORDER BY alert_timestamp DESC LIMIT 1",
             (data["device_id"], data["timestamp"])
         )
         row = cursor.fetchone()
-        alert_event_id = row[0] if row else None
+        alert_id = row[0] if row else None
 
         cursor.execute(
-            "INSERT INTO action_events (device_id, timestamp, action_type, decision_reason, confidence, alert_event_id) VALUES (%s,%s,%s,%s,%s,%s)",
-            (data["device_id"], data["timestamp"], data["action_type"], data["decision_reason"], data["confidence"], alert_event_id)
+            "INSERT INTO action (alert_id, agent_id, action_taken, action_timestamp) VALUES (%s,%s,%s,%s)",
+            (alert_id, "cogni-agent", data["action_type"], data["timestamp"])
         )
 
         status = "CRITICAL" if data["action_type"] == "SHUTDOWN" else "WARNING"
-
         cursor.execute(
             "UPDATE latest_state SET status=%s WHERE device_id=%s",
             (status, data["device_id"])

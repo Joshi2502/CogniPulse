@@ -1,29 +1,24 @@
-CREATE TABLE IF NOT EXISTS telemetry_events (
-    id SERIAL PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS event (
+    event_id SERIAL PRIMARY KEY,
     device_id TEXT NOT NULL,
-    timestamp BIGINT NOT NULL,
-    temperature DOUBLE PRECISION,
-    vibration DOUBLE PRECISION
+    metric_name TEXT NOT NULL,
+    metric_value DOUBLE PRECISION,
+    event_timestamp BIGINT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS alert_events (
-    id SERIAL PRIMARY KEY,
-    device_id TEXT NOT NULL,
-    timestamp BIGINT NOT NULL,
-    alert_type TEXT,
+CREATE TABLE IF NOT EXISTS alert (
+    alert_id SERIAL PRIMARY KEY,
+    event_id INT REFERENCES event(event_id),
     severity TEXT,
-    reason TEXT,
-    telemetry_event_id INT REFERENCES telemetry_events(id)
+    alert_timestamp BIGINT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS action_events (
-    id SERIAL PRIMARY KEY,
-    device_id TEXT NOT NULL,
-    timestamp BIGINT NOT NULL,
-    action_type TEXT,
-    decision_reason TEXT,
-    confidence DOUBLE PRECISION,
-    alert_event_id INT REFERENCES alert_events(id)
+CREATE TABLE IF NOT EXISTS action (
+    action_id SERIAL PRIMARY KEY,
+    alert_id INT REFERENCES alert(alert_id),
+    agent_id TEXT,
+    action_taken TEXT,
+    action_timestamp BIGINT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS latest_state (
