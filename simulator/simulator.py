@@ -20,44 +20,44 @@ while True:
 machines = {
     "machine-01": {
         "mode": "NORMAL",
-        "temperature": 58.0,
-        "wear": 0.0,          # 0.0 = new, 1.0 = fully degraded
+        "temperature": 67.0,  # LOG_ONLY range: 66-70°C
+        "wear": 0.0,
         "profile": {
-            "base_temp": 58.0,
+            "base_temp": 66.0,       # anchored in LOG_ONLY band
             "base_vibration": 0.015,
-            "base_pressure": 4.2,    # bar
-            "base_current": 12.0,    # amps
-            "noise_factor": 1.0,
-            "wear_rate": 0.0003,     # slow degradation
-            "overheat_threshold": 95,
+            "base_pressure": 4.2,
+            "base_current": 12.0,
+            "noise_factor": 0.3,     # low noise — stays stable
+            "wear_rate": 0.0001,
+            "overheat_threshold": 110,
         }
     },
     "machine-02": {
         "mode": "NORMAL",
-        "temperature": 54.0,
-        "wear": 0.2,          # slightly worn already
+        "temperature": 74.0,  # NOTIFY range: 70-78°C
+        "wear": 0.2,
         "profile": {
-            "base_temp": 54.0,
+            "base_temp": 74.0,       # anchored in NOTIFY band
             "base_vibration": 0.012,
             "base_pressure": 4.8,
             "base_current": 10.5,
-            "noise_factor": 0.8,
-            "wear_rate": 0.0001,     # very stable machine
-            "overheat_threshold": 98,
+            "noise_factor": 0.3,     # low noise — stays stable
+            "wear_rate": 0.0001,
+            "overheat_threshold": 110,
         }
     },
     "machine-03": {
         "mode": "NORMAL",
-        "temperature": 63.0,
-        "wear": 0.5,          # already half-degraded — will fail more often
+        "temperature": 82.0,  # COOLING range: 78-100°C, rises into SHUTDOWN
+        "wear": 0.6,
         "profile": {
             "base_temp": 63.0,
             "base_vibration": 0.025,
             "base_pressure": 3.9,
             "base_current": 14.0,
             "noise_factor": 1.4,
-            "wear_rate": 0.0008,     # fast degradation
-            "overheat_threshold": 90,
+            "wear_rate": 0.001,      # fast degradation — hits SHUTDOWN and recovers
+            "overheat_threshold": 92,
         }
     },
 }

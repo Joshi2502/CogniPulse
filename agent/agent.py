@@ -49,6 +49,7 @@ while True:
 print("✅ Agent connected to Kafka and Postgres.")
 print("👂 Waiting for alerts...\n")
 
+
 # -----------------------------
 # Helper: Extract JSON safely
 # -----------------------------
@@ -96,19 +97,19 @@ while True:
             print(latest_temp)
 
             # -----------------------------
-            # Deterministic action + confidence based on thresholds
+            # Deterministic action + confidence based on temperature
             # -----------------------------
             severity = alert["severity"]
 
-            if latest_temp > 100 or severity == "CRITICAL":
+            if severity == "CRITICAL" or latest_temp > 100:
                 action_type = "SHUTDOWN"
-                confidence = round(min(0.7 + (latest_temp - 100) / 100, 1.0), 2) if latest_temp > 100 else 0.95
-            elif latest_temp > 90:
+                confidence = round(min(0.85 + (latest_temp - 100) / 100, 1.0), 2) if latest_temp > 100 else 0.95
+            elif latest_temp > 78:
                 action_type = "COOLING"
-                confidence = round(0.6 + (latest_temp - 90) / 100, 2)
-            elif latest_temp > 75:
+                confidence = round(0.7 + (latest_temp - 78) / 100, 2)
+            elif latest_temp > 70:
                 action_type = "NOTIFY"
-                confidence = round(0.5 + (latest_temp - 75) / 100, 2)
+                confidence = round(0.6 + (latest_temp - 70) / 100, 2)
             else:
                 action_type = "LOG_ONLY"
                 confidence = round(0.5 + (latest_temp - 66) / 100, 2)
@@ -159,6 +160,46 @@ In one sentence, explain why {action_type} is the appropriate response."""
             producer.send("cogni.actions", action_event)
             producer.flush()
 
+            # -----------------------------
+            # Correlation Chain Summary
+            # -----------------------------
+            time.sleep(2)  # allow persistence service to write records
+            try:
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT
+                        ev.event_id,  ev.device_id, ev.metric_name, ev.metric_value,
+                        al.alert_id,  al.severity,
+                        act.action_id, act.action_taken
+                    FROM action act
+                    JOIN alert al  ON act.alert_id = al.alert_id
+                    JOIN event ev  ON al.event_id  = ev.event_id
+                    WHERE ev.device_id = %s
+                    ORDER BY act.action_timestamp DESC
+                    LIMIT 1
+                """, (alert["device_id"],))
+                row = cur.fetchone()
+                cur.close()
+            except Exception as db_err:
+                print(f"⚠️  DB query error: {db_err}")
+                conn.rollback()
+                row = None
+
+            print("──────────────────────────────────────────")
+            if row:
+                ev_id, dev_id, metric, value, al_id, severity, act_id, action_taken = row
+                print(f"  📡 EVENT   │ event_id  = {ev_id}")
+                print(f"             │ device    = {dev_id}")
+                print(f"             │ metric    = {metric} = {value}")
+                print(f"       ↓  (event_id {ev_id} triggered alert_id {al_id})")
+                print(f"  🚨 ALERT   │ alert_id  = {al_id}")
+                print(f"             │ severity  = {severity}")
+                print(f"       ↓  (alert_id {al_id} triggered action_id {act_id})")
+                print(f"  🤖 ACTION  │ action_id = {act_id}")
+                print(f"             │ taken     = {action_taken}")
+            else:
+                print("  ⚠️  No DB records linked yet — persistence may still be writing.")
+            print("──────────────────────────────────────────")
             print("==============================\n")
 
         except Exception as fatal_error:
