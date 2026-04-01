@@ -79,13 +79,18 @@ for message in consumer:
             ))
 
     elif topic == "cogni.alerts":
-        # Link to the most recent temperature event for this device
-        cursor.execute(
-            "SELECT event_id FROM event WHERE device_id=%s AND metric_name='temperature' AND event_timestamp <= %s ORDER BY event_timestamp DESC LIMIT 1",
-            (data["device_id"], data["timestamp"])
-        )
-        row = cursor.fetchone()
-        event_id = row[0] if row else None
+        # Link to the most recent temperature event for this device — retry until found
+        event_id = None
+        for _ in range(5):
+            cursor.execute(
+                "SELECT event_id FROM event WHERE device_id=%s AND metric_name='temperature' ORDER BY event_timestamp DESC LIMIT 1",
+                (data["device_id"],)
+            )
+            row = cursor.fetchone()
+            if row:
+                event_id = row[0]
+                break
+            time.sleep(0.5)
 
         cursor.execute(
             "INSERT INTO alert (event_id, severity, alert_timestamp) VALUES (%s,%s,%s)",
@@ -93,13 +98,18 @@ for message in consumer:
         )
 
     elif topic == "cogni.actions":
-        # Link to the most recent alert for this device
-        cursor.execute(
-            "SELECT alert_id FROM alert WHERE event_id IN (SELECT event_id FROM event WHERE device_id=%s) AND alert_timestamp <= %s ORDER BY alert_timestamp DESC LIMIT 1",
-            (data["device_id"], data["timestamp"])
-        )
-        row = cursor.fetchone()
-        alert_id = row[0] if row else None
+        # Link to the most recent alert for this device — retry until found
+        alert_id = None
+        for _ in range(5):
+            cursor.execute(
+                "SELECT alert_id FROM alert WHERE event_id IN (SELECT event_id FROM event WHERE device_id=%s) ORDER BY alert_timestamp DESC LIMIT 1",
+                (data["device_id"],)
+            )
+            row = cursor.fetchone()
+            if row:
+                alert_id = row[0]
+                break
+            time.sleep(0.5)
 
         cursor.execute(
             "INSERT INTO action (alert_id, agent_id, action_taken, action_timestamp) VALUES (%s,%s,%s,%s)",
