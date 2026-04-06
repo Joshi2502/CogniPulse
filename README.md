@@ -171,6 +171,51 @@ docker exec -it ollama ollama pull tinyllama
 
 ---
 
+## Useful Postgres Queries
+
+Connect to the database:
+```bash
+docker exec -it postgres psql -U cogni -d cogni
+```
+
+### 1. Full Correlation Chain
+Traces every action back to the exact sensor reading that caused it — event → alert → action.
+
+```sql
+SELECT
+    act.action_id, act.action_taken, act.action_timestamp,
+    al.alert_id,   al.severity,      al.alert_timestamp,
+    ev.event_id,   ev.device_id,     ev.metric_name,
+    ev.metric_value, ev.event_timestamp
+FROM action act
+JOIN alert al ON act.alert_id  = al.alert_id
+JOIN event ev ON al.event_id   = ev.event_id
+ORDER BY act.action_timestamp DESC;
+```
+
+### 2. Individual Table Inspection
+See the latest records in each table separately.
+
+```sql
+-- Latest telemetry events
+SELECT * FROM event  ORDER BY event_timestamp  DESC LIMIT 5;
+
+-- Latest alerts
+SELECT * FROM alert  ORDER BY alert_timestamp  DESC LIMIT 5;
+
+-- Latest actions taken
+SELECT * FROM action ORDER BY action_timestamp DESC LIMIT 5;
+```
+
+### 3. Live Device Status
+Shows the current state of every machine — last seen, last temperature, last vibration, and status.
+
+```sql
+SELECT * FROM latest_state;
+```
+
+---
+
 ## Tech Stack
 
 - **Python 3.11** — simulator, agent, persistence, MCP server
